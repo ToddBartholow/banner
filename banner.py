@@ -119,16 +119,16 @@ def courses_to_json(courses):
 ################################################################################
 
 CACHE_DIR = '.cache'
-BASE_URL = 'https://selfservice.brown.edu'
+BASE_URL = 'https://myssb.barstow.edu:4443'
 
-SCHEDULE_MAIN_URL = BASE_URL + '/ss/bwckschd.p_disp_dyn_sched'
-SCHEDULE_DETAIL_URL = '/ss/bwckschd.p_disp_detail_sched'
-SCHEDULE_LINK_REGEX = r'^/ss/bwckschd\.p_disp_detail_sched'
+SCHEDULE_MAIN_URL = BASE_URL + '/PROD/bwckschd.p_disp_dyn_sched'
+SCHEDULE_DETAIL_URL = '/PROD/bwckschd.p_disp_detail_sched'
+SCHEDULE_LINK_REGEX = r'^/PROD/bwckschd\.p_disp_detail_sched'
 SCHEDULE_DATA_PATH = CACHE_DIR + '/%s/schedule/'
 
-CATALOG_MAIN_URL = BASE_URL + '/ss/bwckctlg.p_disp_dyn_ctlg'
-CATALOG_DETAIL_URL = '/ss/bwckctlg.p_display_courses'
-CATALOG_LINK_REGEX = r'^/ss/bwckctlg\.p_disp_course_detail'
+CATALOG_MAIN_URL = BASE_URL + '/PROD/bwckctlg.p_disp_dyn_ctlg'
+CATALOG_DETAIL_URL = '/PROD/bwckctlg.p_display_courses'
+CATALOG_LINK_REGEX = r'^/PROD/bwckctlg\.p_disp_course_detail'
 CATALOG_DATA_PATH = CACHE_DIR + '/%s/catalog/'
 
 EXAM_LINK_REGEX = r'.*Display_Exam'
@@ -146,14 +146,48 @@ def _save(path, data):
 def _download_semester_helper(semester, start_url, path_template):
     # open the main schedule page
     b = mechanize.Browser()
+   
+    # Browser options
     b.set_handle_robots(False)
+    b.set_handle_redirect(True)
+    b.set_handle_equiv(True)
+    b.set_handle_referer(True)
+    b.set_handle_gzip(True)
+
+    # Debugging
+    b.set_debug_http(False)
+    b.set_debug_redirects(False)
+    b.set_debug_responses(False)
+
+    try:
+     b.open('https://myssb.barstow.edu:4443/PROD/twbkwbis.P_WWWLogin')
+    except HTTPError as e:
+      sys.exit("%d: %s" % (e.code, e.msg))
+
+    b.select_form(nr = 0)
+    b['sid'] = 'B00262558'
+    b['PIN'] = '007500'
+
+    try:
+      data = b.submit()
+    except HTTPError as e:
+      sys.exit("%d: %s" % (e.code, e.msg))
+    
     b.open(start_url)
+    response = b.response()
+    #print(response.read())
 
     # select the <option> that starts with the text in semester variable
-    b.select_form(nr=0)
+    b.select_form(nr=1)
     found = False
+      
+    #for control in b.form.controls:
+    #  print control
+    #  print "type=%s, name=%s value=%s" % (control.type, control.name, b[control.name])
+
     for item in b.find_control(type='select').items:
-        if item.get_labels()[0].text.startswith(semester):
+    #for item in b.form.find_control("p_term").items:
+        if item.get_labels()[0].text.startswith(('Spring', 'Summer', 'Fall')):
             item.selected = True
             found = True
             break
@@ -164,13 +198,17 @@ def _download_semester_helper(semester, start_url, path_template):
     b.submit()
 
     # get the list of department codes
-    b.select_form(nr=0)
-    department_codes = map(str, b.find_control(type='select', nr=0).items)
+    b.select_form(nr=1)
+    #for form in b.forms():
+    #  print form.name
 
+    department_codes = map(str, b.find_control(name='sel_subj', nr=1).items)
+    #for code in department_codes:
+    #  print(code)
     # download each department schedule
     for i, department_code in enumerate(department_codes):
-        b.select_form(nr=0)
-        b.find_control(type='select', nr=0).get(department_code).selected = True
+        b.select_form(nr=1)
+        b.find_control(name='sel_subj', nr=1).get(department_code).selected = True
         b.submit()
         html = b.response().read()
         _save((path_template % semester) + department_code + '.html', html)
@@ -400,20 +438,20 @@ def parse_semester(semester_name):
     print 'parsing semester', semester_name
     schedule_courses = _parse_semester_schedule(semester_name)
     catalog_courses = _parse_semester_catalog(semester_name)
-    exam_time_courses = _parse_exam_times(semester_name)
+    #exam_time_courses = _parse_exam_times(semester_name)
 
     # make indices for quick access
     schedule_index = dict((course.name, course) for course in schedule_courses)
     catalog_index = dict((course.name, course) for course in catalog_courses)
-    exam_time_index = dict((course.name, course) for course in exam_time_courses)
+    #exam_time_index = dict((course.name, course) for course in exam_time_courses)
 
     # consistency check
     for name in schedule_index:
         if name not in catalog_index:
             print 'warning(%s): course in schedule but not in catalog' % name
-    for name in exam_time_index:
-        if name not in catalog_index:
-            print 'warning(%s): course in exam times but not in catalog' % name
+    #for name in exam_time_index:
+    #    if name not in catalog_index:
+    #        print 'warning(%s): course in exam times but not in catalog' % name
 
     # merge the courses
     courses = []
@@ -431,11 +469,11 @@ def parse_semester(semester_name):
                     (name, course.title, schedule_course.title)
 
         # merge with exam times
-        if name in exam_time_index:
-            exam_time_semester = exam_time_index[name].get_semester(semester_name)
-            semester = course.get_semester(semester_name)
-            semester.exam_time = exam_time_semester.exam_time
-            semester.exam_date = exam_time_semester.exam_date
+        #if name in exam_time_index:
+        #    exam_time_semester = exam_time_index[name].get_semester(semester_name)
+        #    semester = course.get_semester(semester_name)
+        #    semester.exam_time = exam_time_semester.exam_time
+        #    semester.exam_date = exam_time_semester.exam_date
 
     return courses
 

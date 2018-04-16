@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import banner
 import pickle
 
@@ -5,7 +7,7 @@ import pickle
 # using banner library
 ################################################################################
 
-semesters = ['Fall 2011', 'Spring 2012']
+semesters = ['Spring 2018']
 
 def path_for_semester(semester):
     return '.cache/%s/courses.pickle' % semester
