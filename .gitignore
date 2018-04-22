@@ -1,0 +1,11 @@
+.DS_Store
+*.pyc
+.cache
+banner.xml
+banner.json
+banner.pickle
+.swp
+*.out
+config.py
+bak
+test*
